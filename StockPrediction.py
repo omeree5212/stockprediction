@@ -78,7 +78,7 @@ tokenizer = load_tokenizer()
 # --- Functions ---
 def transcribe_audio(audio_path):
     try:
-        whisper_model = whisper.load_model("tiny.en")  # smaller = faster
+        whisper_model = whisper.load_model("tiny.en")
         result = whisper_model.transcribe(audio_path)
         return result["text"]
     except Exception as e:
@@ -89,7 +89,7 @@ def predict_sentiment(text):
     sequence = tokenizer.texts_to_sequences([text])
     padded = pad_sequences(sequence, maxlen=200)
     prediction = model.predict(padded)
-    return ["Bearish 📉", "Neutral 📊", "Bullish 📈"][np.argmax(prediction)]
+    return ["Bearish 📉", "Neutral 📈", "Bullish 📈"][np.argmax(prediction)]
 
 def extract_key_sentences(transcript):
     sentences = transcript.split(". ")
@@ -172,7 +172,7 @@ if st.session_state.transcript:
             st.write(f"- {sentence}")
 
     with st.expander(f"📊 Sentiment Prediction: {st.session_state.sentiment}"):
-        sentiment_map = {"Bearish 📉": 0, "Neutral 📊": 50, "Bullish 📈": 100}
+        sentiment_map = {"Bearish 📉": 0, "Neutral 📈": 50, "Bullish 📈": 100}
         fig_meter = go.Figure(go.Indicator(
             mode="gauge+number",
             value=sentiment_map[st.session_state.sentiment],
@@ -182,27 +182,38 @@ if st.session_state.transcript:
         st.plotly_chart(fig_meter)
 
     with st.expander("📈 Real-Time S&P 500 Market Trend"):
-        timeframe = st.selectbox("Select Timeframe", ["Daily", "Weekly", "Monthly"])
-        col1, col2 = st.columns(2)
-        with col1:
-            start_date = st.date_input("Start Date", datetime(2022, 1, 1))
-        with col2:
-            end_date = st.date_input("End Date", datetime.today())
+        chart_mode = st.selectbox("Select Chart Mode", ["Daily", "Weekly", "Monthly", "Custom Range"])
 
-        fig = fetch_sp500_chart(timeframe)
+        if chart_mode == "Custom Range":
+            col1, col2 = st.columns(2)
+            with col1:
+                start_date = st.date_input("Start Date", datetime(2022, 1, 1))
+            with col2:
+                end_date = st.date_input("End Date", datetime.today())
+        else:
+            start_date = None
+            end_date = None
+
+        fig = fetch_sp500_chart(chart_mode)
         if fig:
             x_vals = pd.to_datetime(fig.data[0].x)
-            y_vals = fig.data[0].y
-            mask = (x_vals >= pd.to_datetime(start_date)) & (x_vals <= pd.to_datetime(end_date))
-            filtered_fig = go.Figure()
-            filtered_fig.add_trace(go.Scatter(x=x_vals[mask], y=np.array(y_vals)[mask], mode='lines', name='S&P 500'))
-            filtered_fig.update_layout(
-                title=f"S&P 500 Market Trend - {timeframe}",
+            y_vals = np.array(fig.data[0].y)
+
+            if chart_mode == "Custom Range" and start_date and end_date:
+                mask = (x_vals >= pd.to_datetime(start_date)) & (x_vals <= pd.to_datetime(end_date))
+                filtered_fig = go.Figure()
+                filtered_fig.add_trace(go.Scatter(x=x_vals[mask], y=y_vals[mask], mode='lines', name='S&P 500'))
+                fig_to_plot = filtered_fig
+            else:
+                fig_to_plot = fig
+
+            fig_to_plot.update_layout(
+                title=f"S&P 500 Market Trend - {chart_mode}",
                 xaxis_title="Date",
                 yaxis_title="Closing Price",
                 template="plotly_dark" if dark_mode else "plotly"
             )
-            st.plotly_chart(filtered_fig)
+            st.plotly_chart(fig_to_plot)
 
     st.markdown(
         '<p class="disclaimer">⚠️ This is not financial advice. Please do your own research before making investment decisions.</p>',
