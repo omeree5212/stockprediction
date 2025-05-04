@@ -17,17 +17,16 @@ st.set_page_config(page_title="Speech-Driven Stock Analysis", page_icon="📊", 
 # --- Theme State ---
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = False
-
 if "transcript" not in st.session_state:
     st.session_state.transcript = None
     st.session_state.sentiment = None
     st.session_state.key_sentences = None
 
-# Reset state if input changes
-if "previous_input" not in st.session_state:
-    st.session_state.previous_input = ""
+# Clear previous results if input type changes
+if "last_input_type" not in st.session_state:
+    st.session_state.last_input_type = None
 
-# --- Theme Colors ---
+# --- Theme Configuration ---
 dark_mode = st.session_state.dark_mode
 primary_color = "#ffffff" if dark_mode else "#202123"
 secondary_color = "#d0d0d0" if dark_mode else "#6b6b6b"
@@ -59,7 +58,7 @@ with col2:
         st.session_state.dark_mode = not st.session_state.dark_mode
         st.rerun()
 
-# --- Load Model & Tokenizer ---
+# --- Load Resources ---
 @st.cache_resource
 def load_sentiment_model():
     return load_model("speech_sentiment_model.keras")
@@ -86,7 +85,7 @@ def predict_sentiment(text):
     sequence = tokenizer.texts_to_sequences([text])
     padded = pad_sequences(sequence, maxlen=200)
     prediction = model.predict(padded)
-    return ["Bearish 📉", "Neutral 📈", "Bullish 📈"][np.argmax(prediction)]
+    return ["Bearish 📉", "Neutral 📊", "Bullish 📈"][np.argmax(prediction)]
 
 def extract_key_sentences(transcript):
     sentences = transcript.split(". ")
@@ -111,30 +110,29 @@ def download_youtube_audio(youtube_url, output_path="downloaded_audio.mp3"):
 @st.cache_data(ttl=3600)
 def fetch_sp500_chart(timeframe):
     ts = TimeSeries(key="IM3YU1NKAZ8HT60", output_format='pandas')
-    try:
-        if timeframe == "Daily":
-            data, _ = ts.get_daily(symbol="SPY", outputsize="full")
-        elif timeframe == "Weekly":
-            data, _ = ts.get_weekly(symbol="SPY")
-        else:
-            data, _ = ts.get_monthly(symbol="SPY")
-    except:
-        st.warning("🔌 Failed to fetch S&P 500 data.")
-        return None
-
+    if timeframe == "Weekly":
+        data, _ = ts.get_weekly(symbol="SPY")
+    else:
+        data, _ = ts.get_monthly(symbol="SPY")
     data = data.sort_index()
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=data.index, y=data['4. close'], mode='lines', name='S&P 500'))
     return fig
 
-# --- Header ---
+# --- UI ---
 st.markdown("""
 <h1 class="big-title">📊 Speech-Driven Predictive Analysis of the US Stock Market</h1>
 <p class="sub-title">🔍 Analyze speeches from financial leaders and predict stock market impact.</p>
 """, unsafe_allow_html=True)
 
-# --- Input Section ---
 input_type = st.radio("Select Input Type:", ["YouTube Link", "Upload MP3", "Upload Video"], horizontal=True)
+
+if st.session_state.last_input_type != input_type:
+    st.session_state.last_input_type = input_type
+    st.session_state.transcript = None
+    st.session_state.sentiment = None
+    st.session_state.key_sentences = None
+
 st.markdown("<div class='input-button-container'>", unsafe_allow_html=True)
 if input_type == "YouTube Link":
     user_input = st.text_input("", placeholder="Paste YouTube link here…", label_visibility="collapsed")
@@ -142,16 +140,9 @@ else:
     uploaded_file = st.file_uploader("", type=["mp3", "mp4", "mov", "avi"], label_visibility="collapsed")
 st.markdown("</div>", unsafe_allow_html=True)
 
-# Clear old results if input changes
-current_input = user_input if input_type == "YouTube Link" else uploaded_file.name if uploaded_file else ""
-if st.session_state.previous_input != current_input:
-    st.session_state.transcript = None
-    st.session_state.sentiment = None
-    st.session_state.key_sentences = None
-    st.session_state.previous_input = current_input
+analyze_button = st.button("Analyze Speech")
 
-# --- Analyze Button ---
-if st.button("Analyze Speech"):
+if analyze_button:
     file_path = None
     if input_type == "YouTube Link" and user_input:
         file_path = download_youtube_audio(user_input)
@@ -168,14 +159,14 @@ if st.button("Analyze Speech"):
         st.session_state.sentiment = predict_sentiment(transcript)
         st.success("✅ Analysis complete!")
 
-# --- Display Results ---
+# --- Results ---
 if st.session_state.transcript:
     with st.expander("📝 Key Transcript Insights"):
         for sentence in st.session_state.key_sentences:
             st.write(f"- {sentence}")
 
     with st.expander(f"📊 Sentiment Prediction: {st.session_state.sentiment}"):
-        sentiment_map = {"Bearish 📉": 0, "Neutral 📈": 50, "Bullish 📈": 100}
+        sentiment_map = {"Bearish 📉": 0, "Neutral 📊": 50, "Bullish 📈": 100}
         fig_meter = go.Figure(go.Indicator(
             mode="gauge+number",
             value=sentiment_map[st.session_state.sentiment],
@@ -185,46 +176,10 @@ if st.session_state.transcript:
         st.plotly_chart(fig_meter)
 
     with st.expander("📈 Real-Time S&P 500 Market Trend"):
-        trend_type = st.selectbox("Select Trend Type", ["Daily", "Weekly", "Monthly", "Custom Range"])
-
-        if trend_type == "Custom Range":
-            col1, col2 = st.columns(2)
-            with col1:
-                start_date = st.date_input("Start Date", datetime(2022, 1, 1))
-            with col2:
-                end_date = st.date_input("End Date", datetime.today())
-            timeframe = "Daily"
-        else:
-            start_date = datetime(2022, 1, 1)
-            end_date = datetime.today()
-            timeframe = trend_type
-
+        timeframe = st.selectbox("Select Trend Type", ["Weekly", "Monthly"])
         fig = fetch_sp500_chart(timeframe)
         if fig:
-            x_vals = pd.to_datetime(fig.data[0].x)
-            y_vals = fig.data[0].y
-
-            if len(x_vals) != len(y_vals):
-                st.error("❌ Data mismatch between x and y values.")
-            else:
-                mask = (x_vals >= pd.to_datetime(start_date)) & (x_vals <= pd.to_datetime(end_date))
-                if mask.sum() == 0:
-                    st.warning("⚠️ No data available for the selected range.")
-                else:
-                    x_filtered = x_vals[mask]
-                    y_filtered = np.array(y_vals)[mask]
-
-                    filtered_fig = go.Figure()
-                    filtered_fig.add_trace(go.Scatter(
-                        x=x_filtered, y=y_filtered, mode='lines', name='S&P 500'
-                    ))
-                    filtered_fig.update_layout(
-                        title=f"S&P 500 Market Trend - {trend_type}",
-                        xaxis_title="Date",
-                        yaxis_title="Closing Price",
-                        template="plotly_dark" if dark_mode else "plotly"
-                    )
-                    st.plotly_chart(filtered_fig)
+            st.plotly_chart(fig)
 
     st.markdown(
         '<p class="disclaimer">⚠️ This is not financial advice. Please do your own research before making investment decisions.</p>',
