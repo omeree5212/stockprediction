@@ -11,3 +11,4 @@ yfinance
 joblib
 matplotlib
 whisper==1.1.10
+yt-dlp
