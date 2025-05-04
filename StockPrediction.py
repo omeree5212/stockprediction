@@ -14,7 +14,7 @@ from alpha_vantage.timeseries import TimeSeries
 # --- Page Setup ---
 st.set_page_config(page_title="Speech-Driven Stock Analysis", page_icon="📊", layout="wide")
 
-# --- Theme State ---
+# --- Session State ---
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = False
 if "transcript" not in st.session_state:
@@ -46,7 +46,7 @@ st.markdown(f"""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Theme Toggle Button ---
+# --- Theme Switch ---
 col1, col2 = st.columns([10, 1])
 with col2:
     icon = "🌞" if dark_mode else "🌙"
@@ -54,7 +54,7 @@ with col2:
         st.session_state.dark_mode = not st.session_state.dark_mode
         st.rerun()
 
-# --- Load ML Model and Tokenizer ---
+# --- Load Model and Tokenizer ---
 @st.cache_resource
 def load_sentiment_model():
     try:
@@ -89,7 +89,7 @@ def predict_sentiment(text):
     sequence = tokenizer.texts_to_sequences([text])
     padded = pad_sequences(sequence, maxlen=200)
     prediction = model.predict(padded)
-    return ["Bearish 📉", "Neutral 📈", "Bullish 📈"][np.argmax(prediction)]
+    return ["Bearish 📉", "Neutral 📊", "Bullish 📈"][np.argmax(prediction)]
 
 def extract_key_sentences(transcript):
     sentences = transcript.split(". ")
@@ -116,7 +116,7 @@ def fetch_sp500_chart(timeframe):
     ts = TimeSeries(key="IM3YU1NKAZ8HT60", output_format='pandas')
     try:
         if timeframe == "Daily":
-            data, _ = ts.get_daily(symbol="SPY", outputsize="compact")
+            data, _ = ts.get_daily(symbol="SPY", outputsize="full")
         elif timeframe == "Weekly":
             data, _ = ts.get_weekly(symbol="SPY")
         else:
@@ -124,7 +124,6 @@ def fetch_sp500_chart(timeframe):
     except:
         st.warning("🔌 Failed to fetch S&P 500 data.")
         return None
-
     data = data.sort_index()
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=data.index, y=data['4. close'], mode='lines', name='S&P 500'))
@@ -145,10 +144,8 @@ else:
     uploaded_file = st.file_uploader("", type=["mp3", "mp4", "mov", "avi"], label_visibility="collapsed")
 st.markdown("</div>", unsafe_allow_html=True)
 
-# --- Analyze Button ---
-analyze_button = st.button("Analyze Speech")
-
-if analyze_button:
+# --- Analyze ---
+if st.button("Analyze Speech"):
     file_path = None
     if input_type == "YouTube Link" and user_input:
         file_path = download_youtube_audio(user_input)
@@ -165,14 +162,14 @@ if analyze_button:
         st.session_state.sentiment = predict_sentiment(transcript)
         st.success("✅ Analysis complete!")
 
-# --- Display Results ---
+# --- Results ---
 if st.session_state.transcript:
     with st.expander("📝 Key Transcript Insights"):
         for sentence in st.session_state.key_sentences:
             st.write(f"- {sentence}")
 
     with st.expander(f"📊 Sentiment Prediction: {st.session_state.sentiment}"):
-        sentiment_map = {"Bearish 📉": 0, "Neutral 📈": 50, "Bullish 📈": 100}
+        sentiment_map = {"Bearish 📉": 0, "Neutral 📊": 50, "Bullish 📈": 100}
         fig_meter = go.Figure(go.Indicator(
             mode="gauge+number",
             value=sentiment_map[st.session_state.sentiment],
@@ -182,43 +179,43 @@ if st.session_state.transcript:
         st.plotly_chart(fig_meter)
 
     with st.expander("📈 Real-Time S&P 500 Market Trend"):
-        chart_mode = st.selectbox("Select Chart Mode", ["Daily", "Weekly", "Monthly", "Custom Range"])
+        trend_type = st.selectbox("Select Trend Type", ["Daily", "Weekly", "Monthly", "Custom Range"])
+        start_date, end_date = None, None
 
-        if chart_mode == "Custom Range":
+        if trend_type == "Custom Range":
             col1, col2 = st.columns(2)
             with col1:
                 start_date = st.date_input("Start Date", datetime(2022, 1, 1))
             with col2:
                 end_date = st.date_input("End Date", datetime.today())
-        else:
-            start_date = None
-            end_date = None
 
-        fig = fetch_sp500_chart(chart_mode)
+        selected_timeframe = trend_type if trend_type != "Custom Range" else "Daily"
+        fig = fetch_sp500_chart(selected_timeframe)
+
         if fig:
             x_vals = pd.to_datetime(fig.data[0].x)
             y_vals = np.array(fig.data[0].y)
 
-            if chart_mode == "Custom Range" and start_date and end_date:
+            if trend_type == "Custom Range":
                 mask = (x_vals >= pd.to_datetime(start_date)) & (x_vals <= pd.to_datetime(end_date))
-                filtered_fig = go.Figure()
-                filtered_fig.add_trace(go.Scatter(x=x_vals[mask], y=y_vals[mask], mode='lines', name='S&P 500'))
-                fig_to_plot = filtered_fig
+                x_filtered = x_vals[mask]
+                y_filtered = y_vals[mask]
             else:
-                fig_to_plot = fig
+                x_filtered = x_vals
+                y_filtered = y_vals
 
-            fig_to_plot.update_layout(
-                title=f"S&P 500 Market Trend - {chart_mode}",
-                xaxis_title="Date",
-                yaxis_title="Closing Price",
-                template="plotly_dark" if dark_mode else "plotly"
-            )
-            st.plotly_chart(fig_to_plot)
+            if len(x_filtered) == 0 or len(y_filtered) == 0:
+                st.warning("⚠️ No data available for the selected date range.")
+            else:
+                filtered_fig = go.Figure()
+                filtered_fig.add_trace(go.Scatter(x=x_filtered, y=y_filtered, mode='lines', name='S&P 500'))
+                filtered_fig.update_layout(
+                    title=f"S&P 500 Market Trend - {trend_type}",
+                    xaxis_title="Date",
+                    yaxis_title="Closing Price",
+                    template="plotly_dark" if dark_mode else "plotly"
+                )
+                st.plotly_chart(filtered_fig)
 
-    st.markdown(
-        '<p class="disclaimer">⚠️ This is not financial advice. Please do your own research before making investment decisions.</p>',
-        unsafe_allow_html=True
-    )
+    st.markdown('<p class="disclaimer">⚠️ This is not financial advice. Please do your own research before making investment decisions.</p>', unsafe_allow_html=True)
 
-# --- Footer Ping ---
-st.write("✅ Streamlit app is running.")
