@@ -1,7 +1,7 @@
 import os
 import streamlit as st
 import yt_dlp
-import openai_whisper as whisper
+import whisper
 import pickle
 import numpy as np
 import pandas as pd
