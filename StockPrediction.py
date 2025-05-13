@@ -174,13 +174,6 @@ if st.session_state.transcript:
             gauge={"axis": {"range": [0, 100]}, "bar": {"color": "lightblue"}},
         ))
         st.plotly_chart(fig_meter)
-
-    with st.expander("📈 Real-Time S&P 500 Market Trend"):
-        timeframe = st.selectbox("Select Trend Type", ["Weekly", "Monthly"])
-        fig = fetch_sp500_chart(timeframe)
-        if fig:
-            st.plotly_chart(fig)
-
     st.markdown(
         '<p class="disclaimer">⚠️ This is not financial advice. Please do your own research before making investment decisions.</p>',
         unsafe_allow_html=True
