@@ -108,12 +108,9 @@ def download_youtube_audio(youtube_url, output_path="downloaded_audio.mp3"):
         return None
 
 @st.cache_data(ttl=3600)
-def fetch_sp500_chart(timeframe):
+def fetch_sp500_chart():
     ts = TimeSeries(key="IM3YU1NKAZ8HT60", output_format='pandas')
-    if timeframe == "Weekly":
-        data, _ = ts.get_weekly(symbol="SPY")
-    else:
-        data, _ = ts.get_monthly(symbol="SPY")
+    data, _ = ts.get_weekly(symbol="SPY")
     data = data.sort_index()
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=data.index, y=data['4. close'], mode='lines', name='S&P 500'))
@@ -174,6 +171,12 @@ if st.session_state.transcript:
             gauge={"axis": {"range": [0, 100]}, "bar": {"color": "lightblue"}},
         ))
         st.plotly_chart(fig_meter)
+
+    with st.expander("📈 Real-Time S&P 500 Market Trend"):
+        fig = fetch_sp500_chart()
+        if fig:
+            st.plotly_chart(fig)
+
     st.markdown(
         '<p class="disclaimer">⚠️ This is not financial advice. Please do your own research before making investment decisions.</p>',
         unsafe_allow_html=True
