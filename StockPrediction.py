@@ -110,8 +110,9 @@ def download_youtube_audio(youtube_url, output_path="downloaded_audio.mp3"):
 @st.cache_data(ttl=3600)
 def fetch_sp500_chart():
     ts = TimeSeries(key="IM3YU1NKAZ8HT60", output_format='pandas')
-    data, _ = ts.get_weekly(symbol="SPY")
+    data, _ = ts.get_monthly(symbol="SPY")
     data = data.sort_index()
+    data = data[data.index >= '2025-01-01']
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=data.index, y=data['4. close'], mode='lines', name='S&P 500'))
     return fig
